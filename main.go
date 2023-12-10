@@ -6,19 +6,18 @@ import (
 	"time"
 )
 
-func generateNumbers(ch chan<- []int) {
+func generateNumbers(ch chan<- int) {
 	rand.Seed(time.Now().UnixNano())
-	numbers := make([]int, 5)
 	for i := 0; i < 5; i++ {
-		numbers[i] = rand.Intn(100)
+		ch <- rand.Intn(100)
 	}
-	ch <- numbers
+	close(ch)
 }
 
-func findMinMax(numbers []int, result chan<- [2]int) {
-	min := numbers[0]
-	max := numbers[0]
-	for _, num := range numbers {
+func findMinMax(numbers <-chan int, result chan<- [2]int) {
+	min := <-numbers
+	max := min
+	for num := range numbers {
 		if num < min {
 			min = num
 		}
@@ -27,23 +26,27 @@ func findMinMax(numbers []int, result chan<- [2]int) {
 		}
 	}
 	result <- [2]int{min, max}
+	close(result)
 }
 
-func printMinMax(result <-chan [2]int) {
-	minMax := <-result
+func printMinMax(result <-chan [2]int, done chan<- bool) {
+	defer close(done)
+	minMax, isOpen := <-result
+	if !isOpen {
+		return
+	}
 	fmt.Println("Min number", minMax[0])
 	fmt.Println("Max number", minMax[1])
 }
 
 func main() {
-	numbersChannel := make(chan []int)
+	numbersChannel := make(chan int)
 	minMaxChannel := make(chan [2]int)
+	done := make(chan bool)
 
 	go generateNumbers(numbersChannel)
-	numbers := <-numbersChannel
+	go findMinMax(numbersChannel, minMaxChannel)
+	go printMinMax(minMaxChannel, done)
 
-	go findMinMax(numbers, minMaxChannel)
-	go printMinMax(minMaxChannel)
-
-	time.Sleep(1 * time.Second)
+	<-done
 }
